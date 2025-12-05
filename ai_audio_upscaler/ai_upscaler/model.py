@@ -34,7 +34,7 @@ class GatedResidualBlock(nn.Module):
         self.noise1 = NoiseInjection(channels)
         self.noise2 = NoiseInjection(channels)
         
-        self.skip_conv = nn.Conv1d(channels, channels, 1) if channels != channels else nn.Identity()
+        self.skip_conv = nn.Identity()  # Skip connection is not needed when input and output channels are the same
         
         # Time Embedding Projection
         self.time_proj = nn.Linear(time_emb_dim, channels) if time_emb_dim else None

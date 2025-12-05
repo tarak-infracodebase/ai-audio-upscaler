@@ -2,11 +2,16 @@ import torch
 import torchaudio
 import logging
 import os
+from typing import Dict, Any, Optional, Callable, Tuple
+from pathlib import Path
+
 from .config import UpscalerConfig
 from .dsp_basic import DSPUpscaler
 from .dsp_advanced import AdvancedDSPUpscaler, auto_select_filter
 from .dsp.chain import AudioChain
 from ai_audio_upscaler.audio_io import load_audio_robust
+from .security import (validate_output_path, validate_sample_rate, validate_numeric_parameter,
+                      sanitize_filename, ResourceMonitor, SecurityError, ValidationError)
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +46,7 @@ class AudioUpscalerPipeline:
                 dither = filter_settings["dither"] and config.apply_dither
                 noise_shaper = filter_settings["noise_shaper"]
             else:
-                filter_type =config.baseline_method if config.baseline_method.startswith("poly-sinc") else "poly-sinc"
+                filter_type = config.baseline_method if config.baseline_method.startswith("poly-sinc") else "poly-sinc"
                 dither = config.apply_dither
                 noise_shaper = config.noise_shaper
             
@@ -64,14 +69,14 @@ class AudioUpscalerPipeline:
         # Initialize Professional Audio Chain
         self.chain = AudioChain(config.target_sample_rate)
 
-    def load_audio(self, file_path: str):
+    def load_audio(self, file_path: str) -> Tuple[torch.Tensor, int]:
         """
         Robustly loads audio files with fallback mechanisms.
         Delegates to ai_audio_upscaler.audio_io.load_audio_robust.
-        
+
         Args:
             file_path (str): Absolute path to the audio file
-            
+
         Returns:
             tuple: (waveform_tensor, sample_rate_int)
         """
@@ -81,7 +86,7 @@ class AudioUpscalerPipeline:
         logger.info(f"Loading audio: {file_path}")
         return load_audio_robust(file_path)
 
-    def save_audio(self, waveform: torch.Tensor, file_path: str, sample_rate: int):
+    def save_audio(self, waveform: torch.Tensor, file_path: str, sample_rate: int) -> None:
         """Saves audio file."""
         logger.info(f"Saving audio to: {file_path} at {sample_rate} Hz")
         # Ensure directory exists
@@ -114,15 +119,15 @@ class AudioUpscalerPipeline:
             logger.info(f"Falling back to WAV: {fallback_path}")
             torchaudio.save(fallback_path, waveform, sample_rate, bits_per_sample=24)
 
-    def run(self, input_path: str, output_path: str, normalization_mode: str = "Peak -1dB", generate_analysis: bool = False, progress_callback=None,
+    def run(self, input_path: str, output_path: str, normalization_mode: str = "Peak -1dB", generate_analysis: bool = False, progress_callback: Optional[Callable[[float, str], None]] = None,
             tta: bool = False, stereo_mode: str = "lr", transient_strength: float = 0.0, spectral_matching: bool = False,
             remove_dc: bool = True, normalize_input: bool = True, limit: bool = True, saturation: float = 0.0, stereo_width: float = 1.0, transient_shaping: float = 0.0,
             qc: bool = False, candidate_count: int = 8, judge_threshold: float = 0.5,
             denoising_strength: float = 0.6, use_stems: bool = False,
-            use_restoration: bool = False, restoration_strength: float = 0.5):
+            use_restoration: bool = False, restoration_strength: float = 0.5) -> Dict[str, Any]:
         """
-        Runs the full pipeline on a file.
-        
+        Runs the full pipeline on a file with comprehensive validation and security checks.
+
         Args:
             input_path: Path to input audio.
             output_path: Path to save output.
@@ -144,15 +149,63 @@ class AudioUpscalerPipeline:
             # Quality Control Args
             qc: bool = False,
             candidate_count: int = 8,
-            judge_threshold: float = 0.5
+            judge_threshold: float = 0.5,
             denoising_strength: float = 0.6
-        
+
         Returns:
             Dictionary containing paths and optional analysis figures.
+
+        Raises:
+            SecurityError: If security validation fails
+            ValidationError: If input validation fails
         """
+        # Initialize resource monitoring
+        resource_monitor = ResourceMonitor()
+        logger.info("Starting audio processing pipeline with resource monitoring")
+
+        # Validate all parameters
+        try:
+            # Validate paths
+            validated_output_path = validate_output_path(output_path, create_dirs=True)
+
+            # Validate target sample rate
+            validate_sample_rate(self.config.target_sample_rate)
+
+            # Validate normalization mode
+            valid_modes = {"Match Source", "Peak -1dB", "Peak -3dB", "None"}
+            if normalization_mode not in valid_modes:
+                raise ValidationError(f"Invalid normalization mode: {normalization_mode}. Must be one of: {valid_modes}")
+
+            # Validate numeric parameters
+            validate_numeric_parameter(transient_strength, "transient_strength", 0.0, 1.0)
+            validate_numeric_parameter(saturation, "saturation", 0.0, 1.0)
+            validate_numeric_parameter(stereo_width, "stereo_width", 0.0, 2.0)
+            validate_numeric_parameter(transient_shaping, "transient_shaping", 0.0, 1.0)
+            validate_numeric_parameter(judge_threshold, "judge_threshold", 0.0, 1.0)
+            validate_numeric_parameter(denoising_strength, "denoising_strength", 0.0, 1.0)
+            validate_numeric_parameter(restoration_strength, "restoration_strength", 0.0, 1.0)
+
+            # Validate candidate count
+            if not isinstance(candidate_count, int) or candidate_count < 1 or candidate_count > 32:
+                raise ValidationError("candidate_count must be an integer between 1 and 32")
+
+            # Validate stereo mode
+            valid_stereo_modes = {"lr", "mid_side", "left_only", "right_only"}
+            if stereo_mode not in valid_stereo_modes:
+                raise ValidationError(f"Invalid stereo_mode: {stereo_mode}. Must be one of: {valid_stereo_modes}")
+
+        except (SecurityError, ValidationError) as e:
+            logger.error(f"Parameter validation failed: {e}")
+            raise
         if progress_callback:
             progress_callback(0.1, "Loading audio...")
+
+        # Load audio (now includes comprehensive validation)
         waveform, sr = self.load_audio(input_path)
+
+        # Check initial resource usage
+        resource_info = resource_monitor.check_resources()
+        logger.debug(f"Post-load resource usage: {resource_info}")
         
         # Store input for analysis if needed
         input_waveform = waveform if generate_analysis else None
@@ -274,7 +327,12 @@ class AudioUpscalerPipeline:
         # Move to CPU for saving and analysis
         final_waveform = final_waveform.cpu()
         
-        self.save_audio(final_waveform, output_path, self.config.target_sample_rate)
+        # Use validated output path for saving
+        self.save_audio(final_waveform, str(validated_output_path), self.config.target_sample_rate)
+
+        # Final resource check
+        final_resources = resource_monitor.get_resource_summary()
+        logger.info(f"Processing completed. Resource usage summary: {final_resources}")
         
         results = {"output_path": output_path}
         

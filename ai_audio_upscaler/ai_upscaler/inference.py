@@ -1,7 +1,9 @@
 import torch
 import logging
 import os
+from typing import Optional, Callable, Dict, Any, List
 from ..config import UpscalerConfig
+from ..memory_manager import MemoryManager, oom_safe_function, AdaptiveBatchProcessor
 from .model import AudioSuperResNet
 from .diffusion import DiffusionScheduler, DiffusionUNet
 from .spectral_model import SpectralUNet
@@ -22,7 +24,7 @@ class AIUpscalerWrapper:
     """
     def __init__(self, config: UpscalerConfig):
         self.config = config
-        
+
         # Determine device
         if config.device == 'cuda' and torch.cuda.is_available():
             self.device = torch.device('cuda')
@@ -30,8 +32,12 @@ class AIUpscalerWrapper:
             self.device = torch.device('cpu')
             if config.device == 'cuda':
                 logger.warning("CUDA requested but not available. Falling back to CPU.")
-        
+
         logger.info(f"AI Model initialized on device: {self.device}")
+
+        # Initialize advanced memory management
+        self.memory_manager = MemoryManager(self.device)
+        self.adaptive_processor = AdaptiveBatchProcessor(self.memory_manager)
         
         # Initialize Spectral Model (Optional)
         self.spectral_model = None
@@ -119,7 +125,7 @@ class AIUpscalerWrapper:
             self.model.eval()
 
     @staticmethod
-    def list_available_models(models_dir="models"):
+    def list_available_models(models_dir: str = "models") -> List[str]:
         """Scans the models directory for .pth or .ckpt files."""
         if not os.path.exists(models_dir):
             os.makedirs(models_dir, exist_ok=True)
@@ -190,8 +196,7 @@ class AIUpscalerWrapper:
     def enhance(self, waveform: torch.Tensor, original_sr: int, target_sr: int, chunk_seconds: float = 2.0,
                 tta: bool = False, stereo_mode: str = "lr", transient_strength: float = 0.0, spectral_matching: bool = False,
                 qc: bool = False, candidate_count: int = 8, judge_threshold: float = 0.5, diffusion_steps: int = 50,
-
-                denoising_strength: float = 0.6, noise_scale: float = 1.1, progress_callback=None, 
+                denoising_strength: float = 0.6, noise_scale: float = 1.1, progress_callback: Optional[Callable[[float, str], None]] = None,
                 use_stems: bool = False, use_restoration: bool = False, restoration_strength: float = 0.5) -> torch.Tensor:
         """
         Main entry point for audio enhancement with Overlap-Add (OLA) and VRAM management.
@@ -264,15 +269,17 @@ class AIUpscalerWrapper:
         channels, time = waveform.shape
         chunk_size = int(target_sr * chunk_seconds)
         
-        # Determine batch size
-        max_items = self.estimate_max_batch_size(chunk_size, channels)
-        
+        # Use memory manager for intelligent batch sizing
+        tensor_shapes = [(1, channels, chunk_size)]  # Single chunk shape
+        if self.use_diffusion:
+            tensor_shapes.extend([(channels, 1, chunk_size)] * 3)
+
+        initial_batch_size = self.memory_manager.auto_batch_size(4, tensor_shapes)
+
         if tta or stereo_mode == "ms":
-            batch_size = 1
+            batch_size = 1  # These modes require batch size 1
         else:
-            batch_size = max(1, max_items // channels) # Split channels across batch if needed? No, usually (B, C, T)
-            # Actually, if we process (B, C, T), cost is per item.
-            batch_size = max(1, max_items)
+            batch_size = max(1, initial_batch_size)
 
         # Overlap-Add Configuration
         overlap_percent = 0.25
@@ -324,51 +331,55 @@ class AIUpscalerWrapper:
             
             total_chunks = len(chunks)
             
-            # 2. Process Batches
-            for i in range(0, total_chunks, batch_size):
-                # Garbage Collection before batch
-                if self.device.type == 'cuda':
-                    torch.cuda.empty_cache()
-                    import gc
-                    gc.collect()
-                
-                batch_indices = range(i, min(i + batch_size, total_chunks))
-                batch_list = [chunks[j] for j in batch_indices]
-                
-                batch_tensor = torch.stack(batch_list)
-                
-                # Inference
-                processed_batch = self._enhance_batch(
-                    batch_tensor, 
-                    tta=tta, 
-                    stereo_mode=stereo_mode, 
+            # 2. Process Batches with Adaptive Processing
+            def process_chunk_batch(chunk_batch):
+                """Process a batch of chunks."""
+                batch_tensor = torch.stack(chunk_batch)
+                return self._enhance_batch(
+                    batch_tensor,
+                    tta=tta,
+                    stereo_mode=stereo_mode,
                     diffusion_steps=diffusion_steps,
                     denoising_strength=denoising_strength,
                     noise_scale=noise_scale,
                     progress_callback=progress_callback,
-                    current_chunk_idx=i,
+                    current_chunk_idx=0,  # Will be updated by adaptive processor
                     total_chunks=total_chunks
                 )
-                
-                # 3. Accumulate (OLA)
-                for k, processed in enumerate(processed_batch):
-                    idx = i + k
-                    start, end = coords[idx]
+
+            # Use adaptive batch processing
+            processed_batches = self.adaptive_processor.process_batches(
+                chunks, process_chunk_batch, tensor_shapes
+            )
+
+            # 3. Accumulate (OLA) - flatten batches and process
+            chunk_idx = 0
+            for batch_result in processed_batches:
+                # Handle both single results and batch results
+                if len(batch_result.shape) == 4:  # (batch, channels, time)
+                    batch_processed = batch_result
+                else:  # (channels, time) - single result
+                    batch_processed = batch_result.unsqueeze(0)
+
+                for processed in batch_processed:
+                    start, end = coords[chunk_idx]
                     valid_len = end - start
-                    
+
                     # Apply Window
                     processed_windowed = processed * window
-                    
+
                     # Trim padding
                     if valid_len < chunk_size:
                         processed_windowed = processed_windowed[:, :valid_len]
                         this_window = window[:, :valid_len]
                     else:
                         this_window = window
-                        
+
                     # Add to buffer
                     output_tensor[:, start:end] += processed_windowed
                     weight_tensor[:, start:end] += this_window
+
+                    chunk_idx += 1
             
             # 4. Normalize by Weights
             # Avoid division by zero
@@ -585,17 +596,29 @@ class AIUpscalerWrapper:
             
         return out
 
-    def _enhance_batch(self, batch_waveform: torch.Tensor, tta: bool = False, stereo_mode: str = "lr", 
+    @oom_safe_function(fallback_device='cpu', max_retries=2)
+    def _enhance_batch(self, batch_waveform: torch.Tensor, tta: bool = False, stereo_mode: str = "lr",
                        diffusion_steps: int = 50, denoising_strength: float = 0.6, noise_scale: float = 1.1, progress_callback=None, current_chunk_idx=0, total_chunks=1) -> torch.Tensor:
         """
-        Helper to run inference on a batch of chunks.
+        Helper to run inference on a batch of chunks with advanced memory management.
         Args:
             batch_waveform: (Batch, Channels, Time)
             denoising_strength: 0.0 to 1.0. Controls starting timestep.
         """
         with torch.no_grad():
-            batch_device = batch_waveform.to(self.device)
-            batch_size, channels, time = batch_device.shape
+            # Use memory context for safe allocation
+            batch_size, channels, time = batch_waveform.shape
+
+            # Estimate memory requirement
+            tensor_shapes = [(batch_size * channels, 1, time)]
+            if self.use_diffusion:
+                tensor_shapes.extend([(batch_size * channels, 1, time)] * 3)  # Additional tensors for diffusion
+
+            required_memory = self.memory_manager.estimate_memory_requirement(tensor_shapes)
+
+            with self.memory_manager.memory_context(required_memory):
+                batch_device = batch_waveform.to(self.device)
+                batch_size, channels, time = batch_device.shape
             
             # Define the core model function (what runs on the GPU)
             def model_fn(x_input):
