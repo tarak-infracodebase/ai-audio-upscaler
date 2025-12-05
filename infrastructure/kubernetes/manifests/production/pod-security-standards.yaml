@@ -1,0 +1,434 @@
+# Pod Security Standards Implementation
+# Comprehensive container security hardening for 10/10 security score
+
+# Pod Security Policy (using Pod Security Standards)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-audio-upscaler
+  labels:
+    name: ai-audio-upscaler
+    # Pod Security Standards labels
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    # Security policy enforcement
+    security.policy/restricted: "true"
+    security.compliance/required: "true"
+
+---
+# Network Policy - Zero Trust Networking
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ai-upscaler-zero-trust-netpol
+  namespace: ai-audio-upscaler
+spec:
+  podSelector:
+    matchLabels:
+      app: ai-audio-upscaler
+  policyTypes:
+  - Ingress
+  - Egress
+
+  ingress:
+  # Allow ingress from ingress controller only
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8000
+
+  # Allow ingress from monitoring namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 8000
+
+  # Allow internal service communication
+  - from:
+    - podSelector:
+        matchLabels:
+          app: ai-audio-upscaler
+    ports:
+    - protocol: TCP
+      port: 8000
+
+  egress:
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+  # Allow HTTPS outbound (for external APIs)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+
+  # Allow database connections
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 5432
+
+  # Allow Redis connections
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 6379
+    - protocol: TCP
+      port: 6380  # SSL Redis
+
+  # Allow Azure services (Key Vault, Storage, etc.)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# OPA Gatekeeper Constraint Template for Security
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredsecuritycontext
+  namespace: ai-audio-upscaler
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredSecurityContext
+      validation:
+        type: object
+        properties:
+          runAsNonRoot:
+            type: boolean
+          requiredDropCapabilities:
+            type: array
+            items:
+              type: string
+          allowedVolumeTypes:
+            type: array
+            items:
+              type: string
+          forbiddenSysctls:
+            type: array
+            items:
+              type: string
+
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredsecuritycontext
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.securityContext.runAsNonRoot
+          msg := "Container must run as non-root user"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          container.securityContext.runAsUser == 0
+          msg := "Container must not run as root (UID 0)"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          container.securityContext.allowPrivilegeEscalation == true
+          msg := "Privilege escalation must be disabled"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.securityContext.readOnlyRootFilesystem
+          msg := "Root filesystem must be read-only"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          "ALL" in container.securityContext.capabilities.drop
+          count(container.securityContext.capabilities.drop) == 1
+        }
+
+        violation[{"msg": msg}] {
+          volume := input.review.object.spec.volumes[_]
+          volume.hostPath
+          msg := "Host path volumes are not allowed"
+        }
+
+---
+# Gatekeeper Constraint
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredSecurityContext
+metadata:
+  name: must-have-security-context
+  namespace: ai-audio-upscaler
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+    namespaces: ["ai-audio-upscaler"]
+  parameters:
+    runAsNonRoot: true
+    requiredDropCapabilities: ["ALL"]
+    allowedVolumeTypes: ["emptyDir", "configMap", "secret", "projected", "downwardAPI", "persistentVolumeClaim"]
+    forbiddenSysctls: ["kernel.*", "vm.*", "fs.*", "net.*"]
+
+---
+# Security Context Constraints for enhanced security
+apiVersion: v1
+kind: SecurityContextConstraints
+metadata:
+  name: ai-upscaler-scc
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegedContainer: false
+allowPrivilegeEscalation: false
+allowedCapabilities: []
+defaultAddCapabilities: []
+requiredDropCapabilities:
+- ALL
+groups: []
+runAsUser:
+  type: MustRunAsNonRoot
+seLinuxContext:
+  type: MustRunAs
+supplementalGroups:
+  type: RunAsAny
+fsGroup:
+  type: RunAsAny
+volumes:
+- configMap
+- downwardAPI
+- emptyDir
+- projected
+- secret
+- persistentVolumeClaim
+priority: 10
+readOnlyRootFilesystem: true
+seccompProfiles:
+- runtime/default
+
+---
+# Falco Rules for Runtime Security
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falco-rules-custom
+  namespace: ai-audio-upscaler
+  labels:
+    app.kubernetes.io/name: falco
+data:
+  custom_rules.yaml: |
+    # Custom Falco rules for AI Audio Upscaler
+    - rule: Suspicious Process Spawned in AI Upscaler
+      desc: Detect suspicious process spawned in AI upscaler containers
+      condition: >
+        spawned_process and container and
+        k8s.ns.name="ai-audio-upscaler" and
+        k8s.pod.labels.app="ai-audio-upscaler" and
+        (proc.name in (shell_binaries) or
+         proc.name in (network_tools) or
+         proc.name in (system_tools))
+      output: >
+        Suspicious process spawned in AI upscaler container
+        (user=%user.name user_uid=%user.uid command=%proc.cmdline
+         container_id=%container.id container_name=%container.name
+         image=%container.image.repository:%container.image.tag
+         k8s_ns=%k8s.ns.name k8s_pod=%k8s.pod.name)
+      priority: WARNING
+      tags: [container, process, ai-upscaler]
+
+    - rule: Unauthorized File Access in AI Upscaler
+      desc: Detect unauthorized file access outside allowed directories
+      condition: >
+        open_read and container and
+        k8s.ns.name="ai-audio-upscaler" and
+        k8s.pod.labels.app="ai-audio-upscaler" and
+        not fd.name startswith /app and
+        not fd.name startswith /tmp/audio-processing and
+        not fd.name startswith /var/log and
+        not fd.name in (/dev/null, /dev/urandom, /dev/zero)
+      output: >
+        Unauthorized file access in AI upscaler container
+        (user=%user.name command=%proc.cmdline file=%fd.name
+         container_id=%container.id container_name=%container.name
+         k8s_ns=%k8s.ns.name k8s_pod=%k8s.pod.name)
+      priority: ERROR
+      tags: [filesystem, container, ai-upscaler]
+
+    - rule: Network Connection from AI Upscaler to Suspicious Destination
+      desc: Detect network connections to suspicious destinations
+      condition: >
+        outbound and container and
+        k8s.ns.name="ai-audio-upscaler" and
+        k8s.pod.labels.app="ai-audio-upscaler" and
+        not fd.sip in (allowed_ips) and
+        not fd.sport in (allowed_ports)
+      output: >
+        Suspicious network connection from AI upscaler
+        (user=%user.name command=%proc.cmdline connection=%fd.name
+         container_id=%container.id container_name=%container.name
+         k8s_ns=%k8s.ns.name k8s_pod=%k8s.pod.name)
+      priority: WARNING
+      tags: [network, container, ai-upscaler]
+
+    # Define allowed IPs and ports for the application
+    - list: allowed_ips
+      items: [
+        "10.0.0.0/8",      # Private network
+        "172.16.0.0/12",   # Private network
+        "192.168.0.0/16",  # Private network
+        "169.254.0.0/16"   # Azure metadata
+      ]
+
+    - list: allowed_ports
+      items: [53, 80, 443, 5432, 6379, 6380]
+
+---
+# Admission Controller Webhook Configuration
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionWebhook
+metadata:
+  name: ai-upscaler-security-webhook
+webhooks:
+- name: security.ai-upscaler.com
+  clientConfig:
+    service:
+      name: ai-upscaler-admission-webhook
+      namespace: ai-audio-upscaler
+      path: "/validate"
+  rules:
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: ["apps"]
+    apiVersions: ["v1"]
+    resources: ["deployments"]
+  admissionReviewVersions: ["v1", "v1beta1"]
+  sideEffects: None
+  failurePolicy: Fail
+
+---
+# Resource Quotas for namespace security
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: ai-upscaler-resource-quota
+  namespace: ai-audio-upscaler
+spec:
+  hard:
+    # Compute resources
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+
+    # Storage resources
+    requests.storage: 100Gi
+    persistentvolumeclaims: "5"
+
+    # API objects
+    pods: "20"
+    services: "5"
+    secrets: "10"
+    configmaps: "10"
+    persistentvolumeclaims: "5"
+
+---
+# Limit Range for security constraints
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: ai-upscaler-limit-range
+  namespace: ai-audio-upscaler
+spec:
+  limits:
+  - default:
+      cpu: "500m"
+      memory: "1Gi"
+      ephemeral-storage: "2Gi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "256Mi"
+      ephemeral-storage: "1Gi"
+    max:
+      cpu: "2"
+      memory: "4Gi"
+      ephemeral-storage: "10Gi"
+    min:
+      cpu: "50m"
+      memory: "128Mi"
+      ephemeral-storage: "500Mi"
+    type: Container
+
+  - default:
+      storage: "10Gi"
+    max:
+      storage: "50Gi"
+    min:
+      storage: "1Gi"
+    type: PersistentVolumeClaim
+
+---
+# Priority Class for critical workloads
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: ai-upscaler-priority
+value: 1000
+globalDefault: false
+description: "Priority class for AI Audio Upscaler critical workloads"
+
+---
+# Service Monitor for Prometheus security metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ai-upscaler-security-metrics
+  namespace: ai-audio-upscaler
+  labels:
+    app: ai-audio-upscaler
+    monitoring: security
+spec:
+  selector:
+    matchLabels:
+      app: ai-audio-upscaler
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+    - ai-audio-upscaler
+
+---
+# Chaos Engineering for security testing
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: ai-upscaler-security-chaos
+  namespace: ai-audio-upscaler
+spec:
+  action: pod-failure
+  mode: one
+  duration: "30s"
+  selector:
+    namespaces:
+      - ai-audio-upscaler
+    labelSelectors:
+      app: ai-audio-upscaler
+  scheduler:
+    cron: "0 2 * * 0"  # Weekly at 2 AM on Sunday

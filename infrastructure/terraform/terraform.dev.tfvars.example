@@ -83,3 +83,12 @@ aks_sku_tier             = "Free"
 log_retention_days        = 30
 enable_diagnostics        = true
 diagnostic_retention_days = 30
+
+# Security Monitoring Configuration
+security_contact_email           = "security@example.com"
+security_contact_phone          = null  # Optional: "+1234567890"
+ops_contact_email               = "ops@example.com"
+security_webhook_url            = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+create_separate_security_workspace = false
+enable_network_watcher          = true
+enable_nsg_flow_logs           = false  # Disabled for dev to reduce costs

@@ -489,15 +489,15 @@ variable "key_vault_secrets_provider_enabled" {
 
 # Network Security Configuration
 variable "disable_public_access" {
-  description = "Disable public access to Azure services"
+  description = "Disable public access to Azure services (security-first default)"
   type        = bool
-  default     = false
+  default     = true  # Security-first: private by default
 }
 
 variable "create_private_endpoints" {
-  description = "Create private endpoints for Azure services"
+  description = "Create private endpoints for Azure services (required for security)"
   type        = bool
-  default     = false
+  default     = true  # Enable private endpoints by default
 }
 
 variable "enable_app_gateway" {
@@ -555,5 +555,219 @@ variable "diagnostic_retention_days" {
   validation {
     condition     = var.diagnostic_retention_days >= 1 && var.diagnostic_retention_days <= 365
     error_message = "Diagnostic retention days must be between 1 and 365."
+  }
+}
+
+# Security monitoring variables
+variable "security_contact_email" {
+  description = "Email address for security alerts and notifications"
+  type        = string
+  validation {
+    condition     = can(regex("^[^@]+@[^@]+\\.[^@]+$", var.security_contact_email))
+    error_message = "Security contact email must be a valid email address."
+  }
+}
+
+variable "security_contact_phone" {
+  description = "Phone number for critical security alerts (optional)"
+  type        = string
+  default     = null
+}
+
+variable "ops_contact_email" {
+  description = "Email address for operational alerts"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.ops_contact_email == "" || can(regex("^[^@]+@[^@]+\\.[^@]+$", var.ops_contact_email))
+    error_message = "Ops contact email must be a valid email address or empty string."
+  }
+}
+
+variable "security_webhook_url" {
+  description = "Webhook URL for security integrations (e.g., Slack, Teams)"
+  type        = string
+  default     = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+}
+
+variable "create_separate_security_workspace" {
+  description = "Create a separate Log Analytics workspace for security monitoring"
+  type        = bool
+  default     = false
+}
+
+variable "enable_network_watcher" {
+  description = "Enable Network Watcher for network security monitoring"
+  type        = bool
+  default     = true
+}
+
+variable "enable_nsg_flow_logs" {
+  description = "Enable NSG flow logs for network traffic analysis"
+  type        = bool
+  default     = true
+}
+
+# Threat protection variables
+variable "enable_threat_protection_dev" {
+  description = "Enable threat protection features in development environment"
+  type        = bool
+  default     = false
+}
+
+variable "enable_database_threat_protection" {
+  description = "Enable advanced threat protection for databases"
+  type        = bool
+  default     = true
+}
+
+variable "enable_container_security_scanning" {
+  description = "Enable container security scanning with ACR tasks"
+  type        = bool
+  default     = true
+}
+
+variable "github_token" {
+  description = "GitHub personal access token for ACR tasks (optional)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "enable_ddos_protection" {
+  description = "Enable DDoS protection plan (additional cost)"
+  type        = bool
+  default     = false
+}
+
+variable "blocked_countries" {
+  description = "List of country codes to block in WAF geo-blocking rule"
+  type        = list(string)
+  default     = ["CN", "RU", "KP"]  # Example: Block China, Russia, North Korea
+}
+
+variable "enable_threat_intelligence" {
+  description = "Enable threat intelligence integration with Sentinel"
+  type        = bool
+  default     = true
+}
+
+variable "enable_defender_for_containers" {
+  description = "Enable Microsoft Defender for Containers on AKS"
+  type        = bool
+  default     = true
+}
+
+variable "enable_jit_access" {
+  description = "Enable Just-In-Time VM access (for future VM components)"
+  type        = bool
+  default     = false
+}
+
+variable "jit_vm_ids" {
+  description = "List of VM resource IDs for JIT access policy"
+  type        = list(string)
+  default     = []
+}
+
+# Key Vault secrets management variables
+variable "azure_b2c_client_id" {
+  description = "Azure B2C application client ID"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "azure_b2c_client_secret" {
+  description = "Azure B2C application client secret"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "azure_b2c_tenant_name" {
+  description = "Azure B2C tenant name"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "openai_api_key" {
+  description = "OpenAI API key for AI services (optional)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "sendgrid_api_key" {
+  description = "SendGrid API key for email services (optional)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "create_ssl_certificate" {
+  description = "Create self-signed SSL certificate in Key Vault"
+  type        = bool
+  default     = false
+}
+
+variable "app_domain_name" {
+  description = "Application domain name for SSL certificate"
+  type        = string
+  default     = "ai-upscaler.local"
+}
+
+variable "enable_key_rotation_automation" {
+  description = "Enable automated key rotation using Azure Automation"
+  type        = bool
+  default     = false
+}
+
+# Compliance and audit logging variables
+variable "enable_cis_compliance" {
+  description = "Enable CIS Azure Foundations Benchmark compliance policies"
+  type        = bool
+  default     = true
+}
+
+variable "enable_nist_compliance" {
+  description = "Enable NIST SP 800-53 R4 compliance policies"
+  type        = bool
+  default     = false
+}
+
+variable "enable_pci_compliance" {
+  description = "Enable PCI DSS compliance policies"
+  type        = bool
+  default     = false
+}
+
+variable "create_compliance_dashboard" {
+  description = "Create Azure Workbook for compliance dashboard"
+  type        = bool
+  default     = true
+}
+
+variable "enable_compliance_automation" {
+  description = "Enable automated compliance reporting with Logic Apps"
+  type        = bool
+  default     = false
+}
+
+variable "enable_siem_export" {
+  description = "Enable export of security logs to external SIEM systems"
+  type        = bool
+  default     = false
+}
+
+variable "audit_log_retention_days" {
+  description = "Retention period for audit logs in days"
+  type        = number
+  default     = 2555  # 7 years for compliance requirements
+
+  validation {
+    condition     = var.audit_log_retention_days >= 365 && var.audit_log_retention_days <= 3650
+    error_message = "Audit log retention must be between 1 and 10 years (365-3650 days)."
   }
 }

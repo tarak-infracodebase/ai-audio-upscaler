@@ -91,43 +91,19 @@ resource "azurerm_container_registry" "main" {
   # Public access prevention
   public_network_access_enabled = !var.disable_public_access
 
-  # Network access rules
+  # Network access rules - secure by default
   network_rule_set {
     default_action = var.disable_public_access ? "Deny" : "Allow"
+    bypass         = ["AzureServices"]
 
-    dynamic "virtual_network" {
-      for_each = var.disable_public_access ? [1] : []
-      content {
-        action    = "Allow"
-        subnet_id = module.network.subnet_ids.aks
-      }
+    # Allow access from AKS subnet when private access is enabled
+    ip_rules = var.disable_public_access ? [] : []
+    virtual_network {
+      action    = "Allow"
+      subnet_id = module.network.subnet_ids.aks
     }
   }
 
-  # Retention policy for production
-  dynamic "retention_policy" {
-    for_each = var.acr_sku == "Premium" ? [1] : []
-    content {
-      days    = var.acr_retention_days
-      enabled = true
-    }
-  }
-
-  # Trust policy for production
-  dynamic "trust_policy" {
-    for_each = var.acr_sku == "Premium" && local.environment == "production" ? [1] : []
-    content {
-      enabled = true
-    }
-  }
-
-  # Quarantine policy for security scanning
-  dynamic "quarantine_policy" {
-    for_each = var.acr_sku == "Premium" ? [1] : []
-    content {
-      enabled = true
-    }
-  }
 
   # Identity for customer-managed keys
   identity {
@@ -319,8 +295,6 @@ resource "azurerm_postgresql_flexible_server" "main" {
 
   # Security settings
   public_network_access_enabled = false
-  ssl_enforcement_enabled        = true
-  ssl_minimal_tls_version_enforced = "TLS1_2"
 
   # Backup and availability settings
   backup_retention_days        = local.environment == "production" ? 35 : var.backup_retention_days

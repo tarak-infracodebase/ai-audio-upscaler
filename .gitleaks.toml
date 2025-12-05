@@ -1,0 +1,85 @@
+# GitLeaks Configuration for AI Audio Upscaler
+# Comprehensive secrets detection configuration
+
+title = "AI Audio Upscaler - GitLeaks Configuration"
+
+# Global settings
+[extend]
+  useDefault = true
+
+# Additional rules for Azure and application-specific secrets
+[[rules]]
+  id = "azure-subscription-key"
+  description = "Azure Subscription Key"
+  regex = '''(?i)(azure[_-]?subscription[_-]?key|subscription[_-]?key).{0,20}[=:]\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'''
+  tags = ["azure", "key", "subscription"]
+
+[[rules]]
+  id = "azure-storage-connection-string"
+  description = "Azure Storage Connection String"
+  regex = '''DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/]{88}==;EndpointSuffix=core\.windows\.net'''
+  tags = ["azure", "storage", "connection"]
+
+[[rules]]
+  id = "azure-cosmos-db-key"
+  description = "Azure Cosmos DB Key"
+  regex = '''(?i)(cosmos[_-]?db[_-]?key|documentdb[_-]?key).{0,20}[=:]\s*[A-Za-z0-9+/]{88}=='''
+  tags = ["azure", "cosmosdb", "key"]
+
+[[rules]]
+  id = "redis-connection-string"
+  description = "Redis Connection String"
+  regex = '''redis://(?:[^:/@]+:[^:/@]*@)?[^:/@]+:[0-9]+(?:/[0-9]+)?'''
+  tags = ["redis", "connection"]
+
+[[rules]]
+  id = "postgresql-connection-string"
+  description = "PostgreSQL Connection String"
+  regex = '''postgresql://[^:]+:[^@]+@[^:/]+:[0-9]+/[^?]+'''
+  tags = ["postgresql", "database", "connection"]
+
+[[rules]]
+  id = "jwt-secret"
+  description = "JWT Secret Key"
+  regex = '''(?i)(jwt[_-]?secret|secret[_-]?key).{0,20}[=:]\s*["\']?[A-Za-z0-9+/=]{32,}["\']?'''
+  tags = ["jwt", "secret", "key"]
+
+[[rules]]
+  id = "api-key-generic"
+  description = "Generic API Key"
+  regex = '''(?i)(api[_-]?key|apikey|access[_-]?key).{0,20}[=:]\s*["\']?[A-Za-z0-9]{32,}["\']?'''
+  tags = ["api", "key"]
+
+# Allow list - exclude test files and example configurations
+[allowlist]
+  description = "Global allowlist"
+  files = [
+    '''.*\.tfvars\.example$''',
+    '''.*test.*\.py$''',
+    '''.*_test\.py$''',
+    '''tests/.*''',
+    '''.*\.md$''',
+    '''.*\.example$''',
+    '''.secrets.baseline$''',
+    '''.gitleaks.toml$''',
+  ]
+  paths = [
+    '''docs/''',
+    '''examples/''',
+    '''tests/''',
+  ]
+  regexes = [
+    '''(?i)example[_-]?(password|secret|key)''',
+    '''(?i)(test|sample|demo)[_-]?(password|secret|key)''',
+    '''your-[a-z-]+-here''',
+    '''<YOUR_[A-Z_]+>''',
+    '''REPLACE_WITH_''',
+    '''TODO:''',
+    '''CHANGEME''',
+  ]
+
+# Entropy settings for better detection
+[rules.entropy]
+  Min = "3.5"
+  Max = "8.0"
+  Group = "0"

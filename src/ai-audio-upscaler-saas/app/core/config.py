@@ -37,11 +37,15 @@ class Settings(BaseSettings):
     AZURE_B2C_CLIENT_ID: str = ""
     AZURE_B2C_CLIENT_SECRET: str = ""
 
-    # JWT Configuration
-    JWT_SECRET_KEY: str = ""
-    JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    # JWT Configuration - SECURITY CRITICAL
+    JWT_SECRET_KEY: str = Field(..., min_length=32, description="JWT secret key - MUST be set from Key Vault")
+    JWT_ALGORITHM: str = "RS256"  # Use RS256 for better security
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # Reduced from 30 minutes
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # JWT Key Vault Configuration
+    JWT_PRIVATE_KEY_NAME: str = Field(default="jwt-private-key", description="Key Vault private key name")
+    JWT_PUBLIC_KEY_NAME: str = Field(default="jwt-public-key", description="Key Vault public key name")
 
     # Azure Storage
     AZURE_STORAGE_ACCOUNT_NAME: str = ""

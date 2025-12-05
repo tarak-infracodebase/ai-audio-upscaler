@@ -208,14 +208,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "Referrer-Policy": "strict-origin-when-cross-origin",
             "Content-Security-Policy": (
                 "default-src 'self'; "
-                "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
-                "style-src 'self' 'unsafe-inline'; "
-                "img-src 'self' data: https:; "
+                "script-src 'self' 'nonce-{nonce}'; "  # Removed unsafe directives
+                "style-src 'self' 'nonce-{nonce}'; "   # Use nonces instead
+                "img-src 'self' data: blob: https:; "  # Added blob for canvas
                 "font-src 'self' data:; "
-                "connect-src 'self' https:; "
-                "media-src 'self'; "
+                "connect-src 'self' wss: https:; "     # Added WebSocket support
+                "media-src 'self' blob:; "             # Added blob for audio
                 "object-src 'none'; "
-                "base-uri 'self'"
+                "base-uri 'self'; "
+                "form-action 'self'; "                 # Restrict form submissions
+                "frame-ancestors 'none'; "             # Prevent embedding
+                "upgrade-insecure-requests"             # Force HTTPS
             ),
             "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
             "Permissions-Policy": (
