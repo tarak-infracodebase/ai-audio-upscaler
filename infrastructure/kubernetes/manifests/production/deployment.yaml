@@ -1,0 +1,545 @@
+# AI Audio Upscaler Pro - Production Kubernetes Deployment
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-upscaler
+  labels:
+    app: ai-audio-upscaler
+    environment: production
+
+---
+# ConfigMap for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-upscaler-config
+  namespace: ai-upscaler
+data:
+  ENVIRONMENT: "production"
+  API_PREFIX: "/api/v1"
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  ENABLE_METRICS: "true"
+  METRICS_PORT: "9090"
+  MAX_FILE_SIZE_MB: "500"
+  MAX_CONCURRENT_JOBS: "10"
+  JOB_TIMEOUT_MINUTES: "60"
+  CLEANUP_TEMP_FILES_HOURS: "24"
+  GPU_MEMORY_FRACTION: "0.8"
+  CORS_ORIGINS: "*"
+  RATE_LIMIT_REQUESTS: "100"
+  RATE_LIMIT_WINDOW_SECONDS: "3600"
+  CELERY_TASK_SERIALIZER: "json"
+  CELERY_RESULT_SERIALIZER: "json"
+  CELERY_ACCEPT_CONTENT: "[\"json\"]"
+  CELERY_TIMEZONE: "UTC"
+  CELERY_ENABLE_UTC: "true"
+
+---
+# Secret for sensitive configuration
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ai-upscaler-secrets
+  namespace: ai-upscaler
+type: Opaque
+data:
+  # Base64 encoded values - replace with actual secrets
+  DATABASE_URL: cG9zdGdyZXNxbCthc3luY3BnOi8vdXNlcjpwYXNzQGhvc3Q6NTQzMi9kYg==
+  REDIS_URL: cmVkaXM6Ly9ob3N0OjYzNzkvMA==
+  JWT_SECRET_KEY: c3VwZXItc2VjcmV0LWp3dC1rZXk=
+  AZURE_B2C_CLIENT_SECRET: YjJjLWNsaWVudC1zZWNyZXQ=
+  AZURE_STORAGE_CONNECTION_STRING: RGVmYXVsdEVuZHBvaW50c1Byb3RvY29sPWh0dHBzOw==
+  AZURE_CLIENT_SECRET: YXp1cmUtY2xpZW50LXNlY3JldA==
+
+---
+# Service Account with RBAC
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ai-upscaler-sa
+  namespace: ai-upscaler
+  annotations:
+    azure.workload.identity/client-id: "CLIENT_ID_PLACEHOLDER"
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ai-upscaler-role
+  namespace: ai-upscaler
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ai-upscaler-rolebinding
+  namespace: ai-upscaler
+subjects:
+  - kind: ServiceAccount
+    name: ai-upscaler-sa
+    namespace: ai-upscaler
+roleRef:
+  kind: Role
+  name: ai-upscaler-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-audio-upscaler-api
+  namespace: ai-upscaler
+  labels:
+    app: ai-audio-upscaler-api
+    component: api
+    environment: production
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: ai-audio-upscaler-api
+  template:
+    metadata:
+      labels:
+        app: ai-audio-upscaler-api
+        component: api
+        environment: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: ai-upscaler-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: api
+          image: aiupscaleracr.azurecr.io/ai-audio-upscaler:IMAGE_TAG
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          env:
+            - name: KUBERNETES_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          envFrom:
+            - configMapRef:
+                name: ai-upscaler-config
+            - secretRef:
+                name: ai-upscaler-secrets
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 30
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+            - name: app-volume
+              mountPath: /app/tmp
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+        - name: app-volume
+          emptyDir:
+            sizeLimit: 10Gi
+
+---
+# CPU Worker Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-audio-upscaler-worker-cpu
+  namespace: ai-upscaler
+  labels:
+    app: ai-audio-upscaler-worker
+    component: worker-cpu
+    environment: production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-audio-upscaler-worker-cpu
+  template:
+    metadata:
+      labels:
+        app: ai-audio-upscaler-worker-cpu
+        component: worker-cpu
+        environment: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: ai-upscaler-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: worker
+          image: aiupscaleracr.azurecr.io/ai-audio-upscaler:IMAGE_TAG
+          imagePullPolicy: Always
+          command: ["celery"]
+          args: [
+            "worker",
+            "-A", "app.worker.celery",
+            "--loglevel=info",
+            "--queues=cpu,default",
+            "--hostname=worker-cpu@%h",
+            "--max-tasks-per-child=100",
+            "--max-memory-per-child=2000000"  # 2GB
+          ]
+          env:
+            - name: CUDA_VISIBLE_DEVICES
+              value: ""  # CPU only
+            - name: WORKER_TYPE
+              value: "cpu"
+          envFrom:
+            - configMapRef:
+                name: ai-upscaler-config
+            - secretRef:
+                name: ai-upscaler-secrets
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+            - name: app-volume
+              mountPath: /app/tmp
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+        - name: app-volume
+          emptyDir:
+            sizeLimit: 20Gi
+
+---
+# GPU Worker Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-audio-upscaler-worker-gpu
+  namespace: ai-upscaler
+  labels:
+    app: ai-audio-upscaler-worker
+    component: worker-gpu
+    environment: production
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-audio-upscaler-worker-gpu
+  template:
+    metadata:
+      labels:
+        app: ai-audio-upscaler-worker-gpu
+        component: worker-gpu
+        environment: production
+        gpu-node: "true"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+        prometheus.io/scrape_gpu: "true"
+        prometheus.io/port_gpu: "9091"
+    spec:
+      serviceAccountName: ai-upscaler-sa
+      nodeSelector:
+        agentpool: gpunodepool
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: worker
+          image: aiupscaleracr.azurecr.io/ai-audio-upscaler:IMAGE_TAG
+          imagePullPolicy: Always
+          command: ["celery"]
+          args: [
+            "worker",
+            "-A", "app.worker.celery",
+            "--loglevel=info",
+            "--queues=gpu,ai",
+            "--hostname=worker-gpu@%h",
+            "--max-tasks-per-child=10",
+            "--max-memory-per-child=8000000"  # 8GB
+          ]
+          env:
+            - name: WORKER_TYPE
+              value: "gpu"
+          envFrom:
+            - configMapRef:
+                name: ai-upscaler-config
+            - secretRef:
+                name: ai-upscaler-secrets
+          resources:
+            requests:
+              memory: "4Gi"
+              cpu: "1000m"
+              nvidia.com/gpu: 1
+            limits:
+              memory: "16Gi"
+              cpu: "4000m"
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+            - name: app-volume
+              mountPath: /app/tmp
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+        - name: app-volume
+          emptyDir:
+            sizeLimit: 50Gi
+
+---
+# API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-audio-upscaler-api
+  namespace: ai-upscaler
+  labels:
+    app: ai-audio-upscaler-api
+    component: api
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+      protocol: TCP
+  selector:
+    app: ai-audio-upscaler-api
+
+---
+# Load Balancer Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-audio-upscaler-api-lb
+  namespace: ai-upscaler
+  labels:
+    app: ai-audio-upscaler-api
+    component: load-balancer
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-internal: "false"
+    service.beta.kubernetes.io/azure-dns-label-name: "ai-upscaler-prod"
+spec:
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: http
+      protocol: TCP
+  selector:
+    app: ai-audio-upscaler-api
+
+---
+# Horizontal Pod Autoscaler for API
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ai-audio-upscaler-api-hpa
+  namespace: ai-upscaler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ai-audio-upscaler-api
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+
+---
+# HPA for CPU Workers
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ai-audio-upscaler-worker-cpu-hpa
+  namespace: ai-upscaler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ai-audio-upscaler-worker-cpu
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 85
+
+---
+# Pod Disruption Budget for API
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ai-audio-upscaler-api-pdb
+  namespace: ai-upscaler
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: ai-audio-upscaler-api
+
+---
+# Pod Disruption Budget for Workers
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ai-audio-upscaler-worker-pdb
+  namespace: ai-upscaler
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      component: worker-cpu
+
+---
+# Network Policy for security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ai-upscaler-network-policy
+  namespace: ai-upscaler
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 9090
+  egress:
+    - to: []  # Allow all outbound traffic
+      ports:
+        - protocol: TCP
+          port: 443  # HTTPS
+        - protocol: TCP
+          port: 80   # HTTP
+        - protocol: TCP
+          port: 5432 # PostgreSQL
+        - protocol: TCP
+          port: 6379 # Redis
+        - protocol: UDP
+          port: 53   # DNS

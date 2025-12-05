@@ -1,0 +1,263 @@
+# Prometheus Alerting Rules for AI Audio Upscaler Pro
+groups:
+  - name: ai-audio-upscaler.rules
+    rules:
+      # Service Health Alerts
+      - alert: ServiceDown
+        expr: up{job="ai-audio-upscaler"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: ai-audio-upscaler
+        annotations:
+          summary: "AI Audio Upscaler service is down"
+          description: "The AI Audio Upscaler service has been down for more than 1 minute."
+          runbook_url: "https://docs.aiupscaler.com/runbooks/service-down"
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status_code=~"5.."}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: ai-audio-upscaler
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value }} errors per second over the last 5 minutes."
+
+      - alert: CriticalErrorRate
+        expr: rate(http_requests_total{status_code=~"5.."}[5m]) > 0.5
+        for: 2m
+        labels:
+          severity: critical
+          service: ai-audio-upscaler
+        annotations:
+          summary: "Critical error rate detected"
+          description: "Error rate is {{ $value }} errors per second over the last 5 minutes."
+
+      # Performance Alerts
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+          service: ai-audio-upscaler
+        annotations:
+          summary: "High response time"
+          description: "95th percentile response time is {{ $value }}s over the last 10 minutes."
+
+      - alert: CriticalResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 10
+        for: 5m
+        labels:
+          severity: critical
+          service: ai-audio-upscaler
+        annotations:
+          summary: "Critical response time"
+          description: "95th percentile response time is {{ $value }}s over the last 5 minutes."
+
+      # Processing Alerts
+      - alert: ProcessingQueueBacklog
+        expr: queue_depth_total > 100
+        for: 15m
+        labels:
+          severity: warning
+          service: ai-audio-upscaler
+        annotations:
+          summary: "Processing queue backlog"
+          description: "Processing queue has {{ $value }} jobs waiting for more than 15 minutes."
+
+      - alert: CriticalProcessingBacklog
+        expr: queue_depth_total > 500
+        for: 5m
+        labels:
+          severity: critical
+          service: ai-audio-upscaler
+        annotations:
+          summary: "Critical processing backlog"
+          description: "Processing queue has {{ $value }} jobs waiting. System may be overwhelmed."
+
+      - alert: HighProcessingFailureRate
+        expr: rate(processing_errors_total[15m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: ai-audio-upscaler
+        annotations:
+          summary: "High processing failure rate"
+          description: "Processing failure rate is {{ $value }} failures per second."
+
+      # Resource Alerts
+      - alert: HighCPUUsage
+        expr: system_cpu_usage_percent > 80
+        for: 15m
+        labels:
+          severity: warning
+          service: ai-audio-upscaler
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value }}% for more than 15 minutes."
+
+      - alert: CriticalCPUUsage
+        expr: system_cpu_usage_percent > 95
+        for: 5m
+        labels:
+          severity: critical
+          service: ai-audio-upscaler
+        annotations:
+          summary: "Critical CPU usage"
+          description: "CPU usage is {{ $value }}% for more than 5 minutes."
+
+      - alert: HighMemoryUsage
+        expr: system_memory_usage_percent > 85
+        for: 10m
+        labels:
+          severity: warning
+          service: ai-audio-upscaler
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}% for more than 10 minutes."
+
+      - alert: CriticalMemoryUsage
+        expr: system_memory_usage_percent > 95
+        for: 2m
+        labels:
+          severity: critical
+          service: ai-audio-upscaler
+        annotations:
+          summary: "Critical memory usage"
+          description: "Memory usage is {{ $value }}% for more than 2 minutes."
+
+      - alert: HighDiskUsage
+        expr: system_disk_usage_percent > 85
+        for: 30m
+        labels:
+          severity: warning
+          service: ai-audio-upscaler
+        annotations:
+          summary: "High disk usage"
+          description: "Disk usage is {{ $value }}% for more than 30 minutes."
+
+      - alert: CriticalDiskUsage
+        expr: system_disk_usage_percent > 95
+        for: 10m
+        labels:
+          severity: critical
+          service: ai-audio-upscaler
+        annotations:
+          summary: "Critical disk usage"
+          description: "Disk usage is {{ $value }}%. Immediate attention required."
+
+      # GPU Alerts
+      - alert: HighGPUMemoryUsage
+        expr: gpu_memory_usage_percent > 90
+        for: 15m
+        labels:
+          severity: warning
+          service: ai-audio-upscaler
+        annotations:
+          summary: "High GPU memory usage"
+          description: "GPU {{ $labels.device_id }} memory usage is {{ $value }}%."
+
+      - alert: GPUOutOfMemory
+        expr: gpu_memory_usage_percent > 98
+        for: 2m
+        labels:
+          severity: critical
+          service: ai-audio-upscaler
+        annotations:
+          summary: "GPU out of memory"
+          description: "GPU {{ $labels.device_id }} is nearly out of memory ({{ $value }}%)."
+
+      # Database Alerts
+      - alert: DatabaseConnectionsHigh
+        expr: database_connections_active > 50
+        for: 10m
+        labels:
+          severity: warning
+          service: ai-audio-upscaler
+        annotations:
+          summary: "High database connections"
+          description: "Database has {{ $value }} active connections."
+
+      - alert: DatabaseSlowQueries
+        expr: histogram_quantile(0.95, rate(database_query_duration_seconds_bucket[5m])) > 2
+        for: 10m
+        labels:
+          severity: warning
+          service: ai-audio-upscaler
+        annotations:
+          summary: "Slow database queries"
+          description: "95th percentile query time is {{ $value }}s."
+
+      - alert: DatabaseDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: ai-audio-upscaler
+        annotations:
+          summary: "Database is down"
+          description: "PostgreSQL database is not responding."
+
+      # Redis Alerts
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: ai-audio-upscaler
+        annotations:
+          summary: "Redis is down"
+          description: "Redis cache service is not responding."
+
+      # Storage Alerts
+      - alert: StorageServiceDown
+        expr: up{job="azure-storage"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: ai-audio-upscaler
+        annotations:
+          summary: "Azure Storage service is down"
+          description: "Cannot connect to Azure Blob Storage service."
+
+      # Custom Business Logic Alerts
+      - alert: UnusualTrafficPattern
+        expr: rate(http_requests_total[5m]) > 100
+        for: 30m
+        labels:
+          severity: info
+          service: ai-audio-upscaler
+        annotations:
+          summary: "Unusual traffic pattern detected"
+          description: "Request rate is {{ $value }} req/sec, which is unusually high."
+
+      - alert: LowProcessingThroughput
+        expr: rate(audio_files_processed_total[1h]) < 5
+        for: 1h
+        labels:
+          severity: warning
+          service: ai-audio-upscaler
+        annotations:
+          summary: "Low processing throughput"
+          description: "Only {{ $value }} files processed per hour in the last hour."
+
+      - alert: AuthenticationFailures
+        expr: rate(http_requests_total{endpoint="/auth/login", status_code="401"}[10m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: ai-audio-upscaler
+        annotations:
+          summary: "High authentication failure rate"
+          description: "{{ $value }} authentication failures per second. Possible brute force attack."
+
+      - alert: RateLimitingActive
+        expr: rate(http_requests_total{status_code="429"}[5m]) > 1
+        for: 10m
+        labels:
+          severity: info
+          service: ai-audio-upscaler
+        annotations:
+          summary: "Rate limiting is actively blocking requests"
+          description: "{{ $value }} requests per second are being rate limited."

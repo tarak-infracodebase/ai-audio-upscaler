@@ -1,0 +1,50 @@
+# AI Audio Upscaler Pro - Terraform Variables Example
+# Copy this file to terraform.tfvars and update values
+
+# Environment Configuration
+environment = "production"
+location    = "East US 2"
+
+# PostgreSQL Configuration
+postgres_admin_password = "SecurePassword123!"  # Change this!
+
+# AKS Configuration
+kubernetes_version = "1.28"
+aks_node_count     = 3
+
+# GPU Node Pool
+gpu_node_count     = 1
+gpu_vm_size        = "Standard_NC6s_v3"
+gpu_node_disk_size = 100
+
+# Redis Configuration
+redis_sku_name     = "Premium"
+redis_capacity     = 1
+
+# Storage Configuration
+storage_account_tier             = "Standard"
+storage_account_replication_type = "LRS"
+
+# Key Vault Configuration
+key_vault_soft_delete_retention_days = 90
+
+# Tags
+tags = {
+  Project     = "AI Audio Upscaler Pro"
+  Environment = "production"
+  ManagedBy   = "Terraform"
+  Team        = "Engineering"
+  CostCenter  = "R&D"
+}
+
+# Optional: Custom domain and DNS settings
+# domain_name = "aiupscaler.com"
+# dns_zone_name = "aiupscaler.com"
+
+# Optional: Custom network CIDR ranges
+# vnet_address_space = ["10.0.0.0/16"]
+# subnet_cidrs = {
+#   aks     = "10.0.1.0/24"
+#   db      = "10.0.2.0/24"
+#   storage = "10.0.3.0/24"
+# }

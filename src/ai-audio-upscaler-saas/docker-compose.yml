@@ -1,0 +1,265 @@
+# AI Audio Upscaler Pro - Development Stack
+# Full microservices setup for local development and testing
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: ai_upscaler_postgres
+    environment:
+      POSTGRES_DB: ai_audio_upscaler
+      POSTGRES_USER: upscaler
+      POSTGRES_PASSWORD: dev_password_123
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U upscaler -d ai_audio_upscaler"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai_upscaler_network
+
+  # Redis for Celery
+  redis:
+    image: redis:7-alpine
+    container_name: ai_upscaler_redis
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai_upscaler_network
+
+  # Azurite for local Azure Storage emulation
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    container_name: ai_upscaler_azurite
+    ports:
+      - "10000:10000"  # Blob service
+      - "10001:10001"  # Queue service
+      - "10002:10002"  # Table service
+    command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --loose
+    volumes:
+      - azurite_data:/opt/azurite/folder
+    networks:
+      - ai_upscaler_network
+
+  # FastAPI Application
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: ai_upscaler_api
+    ports:
+      - "8000:8000"
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://upscaler:dev_password_123@postgres:5432/ai_audio_upscaler
+
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+
+      # Azure Storage (Azurite for local development)
+      AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+
+      # Application settings
+      ENVIRONMENT: development
+      LOG_LEVEL: debug
+      DEBUG: "true"
+      API_WORKERS: 1
+
+      # Security
+      SECRET_KEY: dev_secret_key_change_in_production
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+
+      # CORS
+      CORS_ORIGINS: '["http://localhost:3000", "http://localhost:8000"]'
+      ALLOWED_HOSTS: '["localhost", "127.0.0.1", "0.0.0.0"]'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      azurite:
+        condition: service_started
+    volumes:
+      - ./:/app
+      - model_cache:/root/.cache
+    command: ["api"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - ai_upscaler_network
+
+  # Celery Worker (CPU)
+  worker-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: ai_upscaler_worker_cpu
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://upscaler:dev_password_123@postgres:5432/ai_audio_upscaler
+
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+
+      # Azure Storage
+      AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+
+      # Worker settings
+      ENVIRONMENT: development
+      LOG_LEVEL: debug
+      WORKER_CONCURRENCY: 2
+      WORKER_QUEUES: "audio_processing,low_priority,maintenance"
+      CUDA_VISIBLE_DEVICES: ""  # CPU only worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+      - model_cache:/root/.cache
+    command: ["worker"]
+    networks:
+      - ai_upscaler_network
+
+  # Celery Worker (GPU) - Uncomment if you have NVIDIA GPU and nvidia-docker
+  # worker-gpu:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #     target: runtime
+  #   container_name: ai_upscaler_worker_gpu
+  #   runtime: nvidia
+  #   environment:
+  #     # Same as worker-cpu but with GPU access
+  #     DATABASE_URL: postgresql+asyncpg://upscaler:dev_password_123@postgres:5432/ai_audio_upscaler
+  #     REDIS_URL: redis://redis:6379/0
+  #     AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+  #     ENVIRONMENT: development
+  #     LOG_LEVEL: debug
+  #     WORKER_CONCURRENCY: 1  # GPU workers should have lower concurrency
+  #     WORKER_QUEUES: "audio_processing,high_priority"
+  #     NVIDIA_VISIBLE_DEVICES: all
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   volumes:
+  #     - ./:/app
+  #     - model_cache:/root/.cache
+  #   command: ["worker"]
+  #   networks:
+  #     - ai_upscaler_network
+
+  # Celery Beat Scheduler
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: ai_upscaler_scheduler
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: development
+      LOG_LEVEL: debug
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+    command: ["scheduler"]
+    networks:
+      - ai_upscaler_network
+
+  # Flower - Celery Monitoring
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: ai_upscaler_flower
+    ports:
+      - "5555:5555"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      FLOWER_USER: admin
+      FLOWER_PASSWORD: flower_dev_123
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["flower"]
+    networks:
+      - ai_upscaler_network
+
+  # Prometheus for monitoring (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ai_upscaler_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - ai_upscaler_network
+
+  # Grafana for visualization (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ai_upscaler_grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - ai_upscaler_network
+
+volumes:
+  postgres_data:
+  redis_data:
+  azurite_data:
+  model_cache:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  ai_upscaler_network:
+    driver: bridge

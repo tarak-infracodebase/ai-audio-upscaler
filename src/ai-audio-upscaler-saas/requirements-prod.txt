@@ -1,0 +1,58 @@
+# Production-specific dependencies for AI Audio Upscaler Pro
+
+# Web Framework and API
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0
+gunicorn>=21.2.0
+
+# Async Task Queue
+celery>=5.3.4
+redis>=5.0.1
+flower>=2.0.1  # Celery monitoring
+
+# Database and ORM
+sqlalchemy>=2.0.23
+alembic>=1.12.1
+asyncpg>=0.29.0  # PostgreSQL async driver
+psycopg2-binary>=2.9.9  # PostgreSQL sync driver
+
+# Azure SDK
+azure-storage-blob>=12.19.0
+azure-identity>=1.15.0
+azure-keyvault-secrets>=4.7.0
+azure-servicebus>=7.11.4
+azure-monitor-opentelemetry-exporter>=1.0.0b21
+
+# Authentication and Security
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.6
+bcrypt>=4.1.2
+
+# Monitoring and Observability
+prometheus-client>=0.19.0
+opentelemetry-api>=1.21.0
+opentelemetry-sdk>=1.21.0
+opentelemetry-instrumentation-fastapi>=0.42b0
+opentelemetry-instrumentation-celery>=0.42b0
+opentelemetry-instrumentation-sqlalchemy>=0.42b0
+structlog>=23.2.0
+
+# Data Validation and Serialization
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# HTTP Client and Utilities
+httpx>=0.25.2
+aiofiles>=23.2.1
+python-dotenv>=1.0.0
+
+# Development and Testing (for staging environments)
+pytest>=7.4.3
+pytest-asyncio>=0.21.1
+pytest-mock>=3.12.0
+locust>=2.17.0  # Load testing
+
+# Security and Compliance
+bandit[toml]>=1.7.5
+safety>=2.3.5

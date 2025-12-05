@@ -1,0 +1,245 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "AI Audio Upscaler Pro - Production Dashboard",
+    "tags": ["ai-audio-upscaler", "production", "monitoring"],
+    "timezone": "UTC",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Service Health Overview",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"ai-audio-upscaler\"}",
+            "legendFormat": "Service Status"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "green", "value": 1}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Request Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total[5m])",
+            "legendFormat": "{{method}} {{endpoint}}"
+          }
+        ],
+        "yAxes": [
+          {"label": "Requests/sec"},
+          {"show": false}
+        ],
+        "gridPos": {"h": 8, "w": 10, "x": 6, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Response Time P95",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "P95 Response Time"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 1},
+                {"color": "red", "value": 5}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}
+      },
+      {
+        "id": 4,
+        "title": "Active Processing Jobs",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "active_jobs_total",
+            "legendFormat": "Active Jobs"
+          },
+          {
+            "expr": "queue_depth_total",
+            "legendFormat": "Queue Depth"
+          }
+        ],
+        "yAxes": [
+          {"label": "Count"},
+          {"show": false}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 5,
+        "title": "Audio Processing Duration",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(audio_processing_duration_seconds_bucket[5m]))",
+            "legendFormat": "P50"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(audio_processing_duration_seconds_bucket[5m]))",
+            "legendFormat": "P95"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(audio_processing_duration_seconds_bucket[5m]))",
+            "legendFormat": "P99"
+          }
+        ],
+        "yAxes": [
+          {"label": "Duration (seconds)"},
+          {"show": false}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      },
+      {
+        "id": 6,
+        "title": "Error Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{status_code=~\"4..\"}[5m])",
+            "legendFormat": "4xx Errors"
+          },
+          {
+            "expr": "rate(http_requests_total{status_code=~\"5..\"}[5m])",
+            "legendFormat": "5xx Errors"
+          },
+          {
+            "expr": "rate(processing_errors_total[5m])",
+            "legendFormat": "Processing Errors"
+          }
+        ],
+        "yAxes": [
+          {"label": "Errors/sec"},
+          {"show": false}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 7,
+        "title": "System Resources",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "system_cpu_usage_percent",
+            "legendFormat": "CPU Usage %"
+          },
+          {
+            "expr": "system_memory_usage_percent",
+            "legendFormat": "Memory Usage %"
+          },
+          {
+            "expr": "system_disk_usage_percent",
+            "legendFormat": "Disk Usage %"
+          }
+        ],
+        "yAxes": [
+          {"label": "Percentage", "max": 100},
+          {"show": false}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      },
+      {
+        "id": 8,
+        "title": "GPU Memory Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "gpu_memory_usage_percent",
+            "legendFormat": "GPU {{device_id}}"
+          }
+        ],
+        "yAxes": [
+          {"label": "GPU Memory %", "max": 100},
+          {"show": false}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+      },
+      {
+        "id": 9,
+        "title": "Database Performance",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "database_connections_active",
+            "legendFormat": "Active Connections"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(database_query_duration_seconds_bucket[5m]))",
+            "legendFormat": "P95 Query Time"
+          }
+        ],
+        "yAxes": [
+          {"label": "Connections / Time(s)"},
+          {"show": false}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}
+      },
+      {
+        "id": 10,
+        "title": "Audio Files Processed",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "increase(audio_files_processed_total[1h])",
+            "legendFormat": "Last Hour"
+          },
+          {
+            "expr": "increase(audio_files_processed_total[24h])",
+            "legendFormat": "Last 24 Hours"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32}
+      },
+      {
+        "id": 11,
+        "title": "Top Endpoints by Request Count",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "topk(10, sum by (endpoint) (rate(http_requests_total[1h])))",
+            "legendFormat": "{{endpoint}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32}
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "30s",
+    "schemaVersion": 27,
+    "version": 1
+  }
+}

@@ -1,0 +1,156 @@
+{
+  "nodes": [
+    {
+      "id": "vnet",
+      "label": "Virtual Network",
+      "subtitle": "prod-vnet",
+      "icon": "/icons/azure/networking/virtual-network.png"
+    },
+    {
+      "id": "aks",
+      "label": "Azure Kubernetes Service",
+      "subtitle": "ai-upscaler-aks",
+      "icon": "/icons/azure/data/azure-media-services.png"
+    },
+    {
+      "id": "acr",
+      "label": "Container Registry",
+      "subtitle": "aiupscaleracr",
+      "icon": "/icons/azure/compute/container-registry.png"
+    },
+    {
+      "id": "postgres",
+      "label": "PostgreSQL Database",
+      "subtitle": "user-data",
+      "icon": "/icons/azure/data/azure-database-for-postgresql.png"
+    },
+    {
+      "id": "redis",
+      "label": "Azure Cache for Redis",
+      "subtitle": "task-queue",
+      "icon": "/icons/azure/networking/azure-cache-for-redis.png"
+    },
+    {
+      "id": "storage",
+      "label": "Blob Storage",
+      "subtitle": "audio-files",
+      "icon": "/icons/azure/storage/storage-account-blob.png"
+    },
+    {
+      "id": "keyvault",
+      "label": "Key Vault",
+      "subtitle": "secrets",
+      "icon": "/icons/azure/security/azure-key-vault-managed-hsm.png"
+    },
+    {
+      "id": "appgw",
+      "label": "Application Gateway",
+      "subtitle": "load-balancer",
+      "icon": "/icons/azure/networking/application-gateway.png"
+    },
+    {
+      "id": "prometheus",
+      "label": "Managed Prometheus",
+      "subtitle": "metrics",
+      "icon": "/icons/azure/management/managed-prometheus.png"
+    },
+    {
+      "id": "grafana",
+      "label": "Managed Grafana",
+      "subtitle": "dashboards",
+      "icon": "/icons/azure/management/azure-managed-grafana.png"
+    },
+    {
+      "id": "loganalytics",
+      "label": "Log Analytics",
+      "subtitle": "centralized-logs",
+      "icon": "/icons/azure/management/log-analytics-solution.png"
+    },
+    {
+      "id": "monitoring",
+      "label": "Azure Monitor",
+      "subtitle": "observability",
+      "icon": "/icons/azure/security/file-integrity-monitoring.png"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "vnet",
+      "target": "aks",
+      "label": "contains"
+    },
+    {
+      "id": "e2",
+      "source": "vnet",
+      "target": "postgres",
+      "label": "contains"
+    },
+    {
+      "id": "e3",
+      "source": "vnet",
+      "target": "redis",
+      "label": "contains"
+    },
+    {
+      "id": "e4",
+      "source": "appgw",
+      "target": "aks",
+      "label": "routes traffic"
+    },
+    {
+      "id": "e5",
+      "source": "aks",
+      "target": "acr",
+      "label": "pulls images"
+    },
+    {
+      "id": "e6",
+      "source": "aks",
+      "target": "postgres",
+      "label": "stores user data"
+    },
+    {
+      "id": "e7",
+      "source": "aks",
+      "target": "redis",
+      "label": "queues tasks"
+    },
+    {
+      "id": "e8",
+      "source": "aks",
+      "target": "storage",
+      "label": "stores files"
+    },
+    {
+      "id": "e9",
+      "source": "aks",
+      "target": "keyvault",
+      "label": "retrieves secrets"
+    },
+    {
+      "id": "e10",
+      "source": "aks",
+      "target": "prometheus",
+      "label": "exports metrics"
+    },
+    {
+      "id": "e11",
+      "source": "prometheus",
+      "target": "grafana",
+      "label": "visualizes data"
+    },
+    {
+      "id": "e12",
+      "source": "aks",
+      "target": "loganalytics",
+      "label": "streams logs"
+    },
+    {
+      "id": "e13",
+      "source": "loganalytics",
+      "target": "monitoring",
+      "label": "alerts & insights"
+    }
+  ]
+}
