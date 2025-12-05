@@ -1,0 +1,85 @@
+# Example Development Environment Configuration
+# Copy to terraform.dev.tfvars and customize for your environment
+# DO NOT commit actual .tfvars files to version control
+
+# General Configuration
+client_name = "ai-upscaler"
+stack       = "audio-processing"
+environment = "dev"
+location    = "East US 2"
+
+# AKS Configuration
+kubernetes_version      = "1.29"
+private_cluster_enabled = false
+rbac_enabled           = true
+admin_group_object_ids = [
+  # "your-azure-ad-admin-group-object-id"
+]
+
+# System Node Pool (smaller for dev)
+system_node_vm_size   = "Standard_D2s_v5"
+system_node_count     = 1
+system_node_min_count = 1
+system_node_max_count = 3
+
+# CPU Worker Nodes (minimal for dev)
+cpu_worker_vm_size    = "Standard_D4s_v5"
+cpu_worker_count      = 1
+cpu_worker_min_count  = 0
+cpu_worker_max_count  = 5
+
+# GPU Configuration (disabled for cost in dev)
+enable_gpu_nodes     = false
+gpu_vm_size         = "Standard_NC4as_T4_v3"
+gpu_worker_count    = 0
+gpu_worker_min_count = 0
+gpu_worker_max_count = 2
+
+# Container Registry (Basic for dev)
+acr_sku = "Basic"
+
+# Storage Configuration (minimal for dev)
+storage_account_tier               = "Standard"
+storage_replication_type          = "LRS"
+storage_shared_access_key_enabled = false
+storage_versioning_enabled        = true
+blob_soft_delete_days             = 7
+container_soft_delete_days        = 7
+point_in_time_restore_days        = 0
+enable_storage_lifecycle_policy   = true
+
+# Redis Configuration (Basic for dev)
+redis_sku_name = "Basic"
+redis_family   = "C"
+redis_capacity = 0
+
+# PostgreSQL Configuration
+postgres_version     = "15"
+postgres_admin_login = "aiupscaleradmin"
+# Set postgres_admin_password via TF_VAR_postgres_admin_password environment variable
+postgres_sku_name            = "B_Standard_B1ms"
+postgres_storage_mb          = 32768
+postgres_database_name       = "ai_audio_upscaler"
+backup_retention_days        = 7
+geo_redundant_backup_enabled = false
+
+# Key Vault Configuration
+key_vault_sku_name                     = "standard"
+key_vault_rbac_enabled                = true
+key_vault_soft_delete_days            = 7
+key_vault_purge_protection            = false
+key_vault_secrets_provider_enabled    = true
+
+# Network Security (less restrictive for dev)
+disable_public_access    = false
+create_private_endpoints = false
+enable_app_gateway      = false
+
+# AKS Additional Configuration
+automatic_upgrade_channel = "patch"
+aks_sku_tier             = "Free"
+
+# Monitoring Configuration (shorter retention for dev)
+log_retention_days        = 30
+enable_diagnostics        = true
+diagnostic_retention_days = 30

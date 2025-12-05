@@ -1,0 +1,86 @@
+# Example Production Environment Configuration
+# Copy to terraform.production.tfvars and customize for your environment
+# DO NOT commit actual .tfvars files to version control
+
+# General Configuration
+client_name = "ai-upscaler"
+stack       = "audio-processing"
+environment = "production"
+location    = "East US 2"
+
+# AKS Configuration (production-ready)
+kubernetes_version      = "1.29"
+private_cluster_enabled = true
+rbac_enabled           = true
+admin_group_object_ids = [
+  # "your-azure-ad-admin-group-object-id"
+]
+
+# System Node Pool (production sizing)
+system_node_vm_size   = "Standard_D4s_v5"
+system_node_count     = 3
+system_node_min_count = 3
+system_node_max_count = 5
+
+# CPU Worker Nodes (scalable for production)
+cpu_worker_vm_size    = "Standard_D8s_v5"
+cpu_worker_count      = 3
+cpu_worker_min_count  = 2
+cpu_worker_max_count  = 20
+
+# GPU Configuration (enabled for AI workloads)
+enable_gpu_nodes     = true
+gpu_vm_size         = "Standard_NC6s_v3"
+gpu_worker_count    = 2
+gpu_worker_min_count = 1
+gpu_worker_max_count = 10
+
+# Container Registry (Premium for production)
+acr_sku            = "Premium"
+acr_retention_days = 90
+
+# Storage Configuration (production-grade)
+storage_account_tier               = "Standard"
+storage_replication_type          = "ZRS"
+storage_shared_access_key_enabled = false
+storage_versioning_enabled        = true
+blob_soft_delete_days             = 90
+container_soft_delete_days        = 30
+point_in_time_restore_days        = 30
+enable_storage_lifecycle_policy   = true
+
+# Redis Configuration (Premium for production)
+redis_sku_name = "Premium"
+redis_family   = "P"
+redis_capacity = 2
+
+# PostgreSQL Configuration (production-grade)
+postgres_version     = "15"
+postgres_admin_login = "aiupscaleradmin"
+# Set postgres_admin_password via TF_VAR_postgres_admin_password environment variable
+postgres_sku_name            = "GP_Standard_D4s_v3"
+postgres_storage_mb          = 262144
+postgres_database_name       = "ai_audio_upscaler"
+backup_retention_days        = 35
+geo_redundant_backup_enabled = true
+
+# Key Vault Configuration (production security)
+key_vault_sku_name                     = "premium"
+key_vault_rbac_enabled                = true
+key_vault_soft_delete_days            = 90
+key_vault_purge_protection            = true
+key_vault_secrets_provider_enabled    = true
+
+# Network Security (maximum security for production)
+disable_public_access    = true
+create_private_endpoints = true
+enable_app_gateway      = true
+
+# AKS Additional Configuration (stable for production)
+automatic_upgrade_channel = "stable"
+aks_sku_tier             = "Standard"
+
+# Monitoring Configuration (extended retention for production)
+log_retention_days        = 90
+enable_diagnostics        = true
+diagnostic_retention_days = 180
