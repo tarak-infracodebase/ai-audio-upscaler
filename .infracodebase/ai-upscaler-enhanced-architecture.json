@@ -1,0 +1,222 @@
+{
+  "nodes": [
+    {
+      "id": "rg-main",
+      "label": "Resource Group",
+      "subtitle": "ai-upscaler-prod-rg",
+      "icon": "/icons/azure/management/resource-group.png"
+    },
+    {
+      "id": "vnet",
+      "label": "Virtual Network",
+      "subtitle": "10.0.0.0/16",
+      "icon": "/icons/azure/security/azure-firewall-virtual-network.png"
+    },
+    {
+      "id": "aks-subnet",
+      "label": "AKS Subnet",
+      "subtitle": "10.0.1.0/24",
+      "icon": "/icons/azure/networking/subnet.png"
+    },
+    {
+      "id": "postgres-subnet",
+      "label": "PostgreSQL Subnet",
+      "subtitle": "10.0.2.0/24",
+      "icon": "/icons/azure/networking/subnet.png"
+    },
+    {
+      "id": "pe-subnet",
+      "label": "Private Endpoints Subnet",
+      "subtitle": "10.0.3.0/24",
+      "icon": "/icons/azure/networking/subnet.png"
+    },
+    {
+      "id": "aks-cluster",
+      "label": "AKS Cluster",
+      "subtitle": "Kubernetes v1.29",
+      "icon": "/icons/azure/compute/aks-workload.png"
+    },
+    {
+      "id": "system-nodepool",
+      "label": "System Node Pool",
+      "subtitle": "Standard_D4s_v5",
+      "icon": "/icons/azure/compute/aks-node-pool.png"
+    },
+    {
+      "id": "cpu-nodepool",
+      "label": "CPU Worker Pool",
+      "subtitle": "Standard_D8s_v5",
+      "icon": "/icons/azure/compute/aks-node-pool.png"
+    },
+    {
+      "id": "gpu-nodepool",
+      "label": "GPU Worker Pool",
+      "subtitle": "Standard_NC6s_v3",
+      "icon": "/icons/azure/compute/aks-node-pool.png"
+    },
+    {
+      "id": "acr",
+      "label": "Container Registry",
+      "subtitle": "Premium SKU",
+      "icon": "/icons/azure/compute/container-registry.png"
+    },
+    {
+      "id": "storage",
+      "label": "Storage Account",
+      "subtitle": "ZRS Replication",
+      "icon": "/icons/azure/storage/storage-account-blob.png"
+    },
+    {
+      "id": "redis",
+      "label": "Redis Cache",
+      "subtitle": "Premium P2",
+      "icon": "/icons/azure/networking/azure-cache-for-redis.png"
+    },
+    {
+      "id": "postgres",
+      "label": "PostgreSQL",
+      "subtitle": "Flexible Server v15",
+      "icon": "/icons/azure/data/azure-database-for-postgresql.png"
+    },
+    {
+      "id": "keyvault",
+      "label": "Key Vault",
+      "subtitle": "Premium HSM",
+      "icon": "/icons/azure/security/azure-key-vault-managed-hsm.png"
+    },
+    {
+      "id": "log-analytics",
+      "label": "Log Analytics",
+      "subtitle": "Container Insights",
+      "icon": "/icons/azure/management/azure-monitor-log-analytics--health.png"
+    },
+    {
+      "id": "private-endpoint-storage",
+      "label": "Storage Private Endpoint",
+      "subtitle": "Blob Access",
+      "icon": "/icons/azure/networking/private-endpoint.png"
+    },
+    {
+      "id": "private-endpoint-kv",
+      "label": "Key Vault Private Endpoint",
+      "subtitle": "Secure Access",
+      "icon": "/icons/azure/networking/private-endpoint.png"
+    }
+  ],
+  "edges": [
+    {
+      "id": "rg-contains-vnet",
+      "source": "rg-main",
+      "target": "vnet",
+      "label": "contains"
+    },
+    {
+      "id": "vnet-contains-aks-subnet",
+      "source": "vnet",
+      "target": "aks-subnet",
+      "label": "contains"
+    },
+    {
+      "id": "vnet-contains-postgres-subnet",
+      "source": "vnet",
+      "target": "postgres-subnet",
+      "label": "contains"
+    },
+    {
+      "id": "vnet-contains-pe-subnet",
+      "source": "vnet",
+      "target": "pe-subnet",
+      "label": "contains"
+    },
+    {
+      "id": "aks-subnet-hosts-aks",
+      "source": "aks-subnet",
+      "target": "aks-cluster",
+      "label": "hosts"
+    },
+    {
+      "id": "aks-has-system-pool",
+      "source": "aks-cluster",
+      "target": "system-nodepool",
+      "label": "manages"
+    },
+    {
+      "id": "aks-has-cpu-pool",
+      "source": "aks-cluster",
+      "target": "cpu-nodepool",
+      "label": "manages"
+    },
+    {
+      "id": "aks-has-gpu-pool",
+      "source": "aks-cluster",
+      "target": "gpu-nodepool",
+      "label": "manages"
+    },
+    {
+      "id": "aks-pulls-from-acr",
+      "source": "aks-cluster",
+      "target": "acr",
+      "label": "pulls images"
+    },
+    {
+      "id": "aks-uses-storage",
+      "source": "aks-cluster",
+      "target": "storage",
+      "label": "stores audio files"
+    },
+    {
+      "id": "aks-caches-redis",
+      "source": "aks-cluster",
+      "target": "redis",
+      "label": "caches data"
+    },
+    {
+      "id": "aks-persists-postgres",
+      "source": "aks-cluster",
+      "target": "postgres",
+      "label": "stores metadata"
+    },
+    {
+      "id": "aks-secrets-keyvault",
+      "source": "aks-cluster",
+      "target": "keyvault",
+      "label": "retrieves secrets"
+    },
+    {
+      "id": "aks-logs-analytics",
+      "source": "aks-cluster",
+      "target": "log-analytics",
+      "label": "sends logs"
+    },
+    {
+      "id": "postgres-subnet-hosts-postgres",
+      "source": "postgres-subnet",
+      "target": "postgres",
+      "label": "hosts"
+    },
+    {
+      "id": "pe-subnet-hosts-storage-pe",
+      "source": "pe-subnet",
+      "target": "private-endpoint-storage",
+      "label": "hosts"
+    },
+    {
+      "id": "pe-subnet-hosts-kv-pe",
+      "source": "pe-subnet",
+      "target": "private-endpoint-kv",
+      "label": "hosts"
+    },
+    {
+      "id": "storage-pe-connects-storage",
+      "source": "private-endpoint-storage",
+      "target": "storage",
+      "label": "private access"
+    },
+    {
+      "id": "kv-pe-connects-kv",
+      "source": "private-endpoint-kv",
+      "target": "keyvault",
+      "label": "private access"
+    }
+  ]
+}

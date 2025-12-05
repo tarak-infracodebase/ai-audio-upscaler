@@ -1,0 +1,63 @@
+# Polaris Configuration for Kubernetes Security
+# Best practices validation for Kubernetes manifests
+
+checks:
+  # Security
+  hostIPCSet: warning
+  hostNetworkSet: warning
+  hostPIDSet: warning
+  insecureCapabilities: error
+  privilegeEscalationAllowed: error
+  runAsNonRoot: error
+  runAsPrivileged: error
+  notReadOnlyRootFilesystem: warning
+
+  # Images
+  tagNotSpecified: error
+  pullPolicyNotAlways: warning
+
+  # Networking
+  hostPortSet: warning
+
+  # Resources
+  cpuRequestsMissing: warning
+  memoryRequestsMissing: warning
+  cpuLimitsMissing: warning
+  memoryLimitsMissing: warning
+
+  # Health checks
+  readinessProbeMissing: warning
+  livenessProbeMissing: warning
+
+exemptions:
+  # Allow some exemptions for specific use cases
+  - controllerName: ai-audio-upscaler
+    rules:
+      - tagNotSpecified  # We use dynamic tags from CI/CD
+
+  - controllerName: external-secrets-operator
+    rules:
+      - runAsNonRoot     # ESO requires specific user configuration
+
+# Mutation settings
+mutations:
+  # Automatically add security contexts
+  - kind: Deployment
+    metadata:
+      name: add-security-context
+    spec:
+      template:
+        spec:
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+
+# Webhook configuration for admission control
+webhook:
+  exclude:
+    - kube-system
+    - kube-public
+    - kube-node-lease
+    - cert-manager
+    - external-secrets-system
