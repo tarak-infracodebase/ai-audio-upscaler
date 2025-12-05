@@ -1,0 +1,31 @@
+[flake8]
+max-line-length = 100
+extend-ignore =
+    # Black compatibility
+    E203,  # whitespace before ':'
+    E501,  # line too long (handled by Black)
+    W503,  # line break before binary operator
+    W504,  # line break after binary operator
+    # Allow longer lines in specific contexts
+    B950,  # line too long variant
+    # Ignore some docstring issues in tests
+    D100, D101, D102, D103, D104, D105, D106, D107,
+per-file-ignores =
+    # Tests can have longer lines and different import styles
+    tests/*:E501,F401,F811
+    # Allow star imports in __init__.py
+    __init__.py:F401,F403
+    # Allow unused imports in CLI modules
+    cli.py:F401
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    .eggs,
+    *.egg-info,
+    build,
+    dist,
+    docs,
+    .tox,
+    .pytest_cache,
+    .mypy_cache,
